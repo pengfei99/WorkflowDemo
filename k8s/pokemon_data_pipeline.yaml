@@ -1,0 +1,341 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: pokemon-data-pipeline
+spec:
+  entrypoint: main
+  arguments:
+    parameters:
+      - name: output-file-list
+        value: |
+          [
+            { "file-path": "/mnt/tmp", "file-name": "pokemon-enriched.csv" },
+            { "file-path": "/mnt/tmp", "file-name": "random_forest_pokemon_legendary_classifier.sav" },
+            { "file-path": "/mnt/tmp", "file-name": "pokemon-ml-output.txt" },
+            { "file-path": "/mnt/tmp", "file-name": "top-5-pokemon.csv" }
+          ]
+  # Create a pvc for the workflow
+  volumeClaimTemplates:
+    - metadata:
+        name: workflow-tmp
+      spec:
+        # The CephFS storage class accept three access mode:
+        # ReadWriteOnce
+        # ReadOnlyMany
+        # ReadWriteMany
+        # But not the rook-ceph-block storage class. It only supports ReadWriteOnce
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 10Gi
+
+  templates:
+    #############################################################################################
+    #################### main template for planning dag of the pipeline #########################
+    #############################################################################################
+    - name: main
+      dag:
+        tasks:
+          # task 0: load code source and data
+          - name: load-code-and-data
+            template: load-code-and-data-wt
+          # task 1: check duplicated rows
+          - name: check-duplicated-rows
+            dependencies: [load-code-and-data]
+            template: check-duplicated-rows-wt
+          # task 2: check missing values
+          - name: check-missing-value
+            dependencies: [load-code-and-data]
+            template: check-missing-value-wt
+          # task 3: check data set shape
+          - name: check-raw-data-shape
+            dependencies: [load-code-and-data]
+            template: check-raw-data-shape-wt
+          # task 4: check missing values
+          - name: check-data-schema
+            dependencies: [load-code-and-data]
+            template: check-data-schema-wt
+          # task 5: remove duplicated rows,this task is activated when task 1 detects duplication
+          - name: remove-duplicated-rows
+            dependencies: [check-duplicated-rows,check-missing-value]
+            template: remove-duplicated-rows-wt
+            when: "{{tasks.check-duplicated-rows.outputs.parameters.has-duplicated-rows}} == True"
+          # task 5-1: if no duplicated rows, copy the origin input file
+          - name: copy-origin-input-file
+            dependencies: [check-duplicated-rows,check-missing-value]
+            template: copy-origin-input-file-wt
+            when: "{{tasks.check-duplicated-rows.outputs.parameters.has-duplicated-rows}} == False"
+          # task 6: rename column name
+          - name: rename-column
+            dependencies: [remove-duplicated-rows, copy-origin-input-file]
+            template: rename-column-wt
+          # task 7: enrich data by adding new pokemon score columns
+          - name: enrich-data
+            dependencies: [rename-column]
+            template: enrich-data-wt
+          # task 8: check data shape after data enriched
+          - name: check-enriched-data-shape
+            dependencies: [enrich-data]
+            template: check-enriched-data-shape-wt
+          # task 9: ml for legendary pokemon
+          - name: predict-legendary-pokemon
+            dependencies: [rename-column]
+            template: predict-legendary-pokemon-wt
+          # task 10: Get top 5 best pokemon of all generation
+          - name: get-all-time-best-pokemon
+            dependencies: [enrich-data]
+            template: get-all-time-best-pokemon-wt
+          # task 11: split pokemon by their generation
+          - name: split-pokemon-by-generation
+            dependencies: [enrich-data]
+            template: split-pokemon-by-generation-wt
+          # task 12: Get top 5 best pokemon of each generation
+          - name: get-best-pokemon-of-each-generation
+            dependencies: [split-pokemon-by-generation]
+            template: get-best-pokemon-of-each-generation-wt
+            arguments:
+              parameters:
+                - name: input-file-name
+                  value: "pokemon-gen-{{item}}.csv"
+            withItems:
+              - 1
+              - 2
+              - 3
+              - 4
+              - 5
+              - 6
+          # task 13: Save results to s3
+          - name: save-result-to-s3
+            dependencies: [get-best-pokemon-of-each-generation,predict-legendary-pokemon,get-all-time-best-pokemon]
+            template: save-result-to-s3-wt
+            arguments:
+              parameters:
+                - name: file-path
+                  value: "{{item.file-path}}"
+                - name: file-name
+                  value: "{{item.file-name}}"
+            # pass the inputs to the step "withParam"
+            withParam: "{{workflow.parameters.output-file-list}}"
+    ####################################################################################################################
+    #################### task template for implementing the logic of each task of the pipeline #########################
+    ####################################################################################################################
+    # worker template for task-0 load code source and data
+    - name: load-code-and-data-wt
+      inputs:
+        artifacts:
+          # Check out the master branch of the argo repo and place it at /src
+          # revision can be anything that git checkout accepts: branch, commit, tag, etc.
+          - name: code
+            path: /mnt/bin
+            git:
+              repo: https://github.com/pengfei99/argoDataPipeline.git
+              revision: "main"
+          - name: input-data
+            path: /mnt/input
+            s3:
+              endpoint: minio.lab.sspcloud.fr
+              bucket: argo-artifacts
+              key: data-pipeline/demo/input
+              accessKeySecret:
+                name: prod-minio-cred
+                key: accessKey
+              secretKeySecret:
+                name: prod-minio-cred
+                key: secretKey
+      container:
+        image: busybox
+        command: [sh, -c]
+        args: ["mkdir -p /mnt/tmp /mnt/output; ls -l /mnt/bin /mnt/input /mnt/tmp /mnt/output"]
+        volumeMounts:
+          - name: workflow-tmp
+            mountPath: /mnt
+
+    # worker template for task-1 check-duplicated-rows
+    - name: check-duplicated-rows-wt
+      container:
+        image: liupengfei99/python38-ds
+        command: [sh, -c]
+        args: ["python -V && python /mnt/bin/src/data_quality/CheckDuplication.py
+               /mnt/input/pokemon-bad.csv /mnt/tmp/output-params.txt | tee /mnt/tmp/Duplicated_rows.txt"]
+        volumeMounts:
+          - name: workflow-tmp
+            mountPath: /mnt
+      outputs:
+        parameters:
+          - name: has-duplicated-rows
+            valueFrom:
+              # Default value to use if retrieving valueFrom fails. If not provided workflow will fail instead
+              default: "True"
+              path: /mnt/tmp/output-params.txt
+
+    # worker template for task-2 check-missing-values
+    - name: check-missing-value-wt
+      container:
+        image: liupengfei99/python38-ds
+        command: [sh, -c]
+        args: ["python -V && python /mnt/bin/src/data_quality/CheckMissingValue.py
+                   /mnt/input/pokemon-bad.csv | tee /mnt/tmp/MissingValue.txt"]
+        volumeMounts:
+          - name: workflow-tmp
+            mountPath: /mnt
+
+    # worker template for task-3 check-data-shape
+    - name: check-raw-data-shape-wt
+      container:
+        image: liupengfei99/python38-ds
+        command: [sh, -c]
+        args: ["python -V && python /mnt/bin/src/data_info/CheckShape.py
+               /mnt/input/pokemon-bad.csv"]
+        volumeMounts:
+          - name: workflow-tmp
+            mountPath: /mnt
+
+    # worker template for task-4 check-data-schema
+    - name: check-data-schema-wt
+      container:
+        image: liupengfei99/python38-ds
+        command: [sh, -c]
+        args: ["python -V && python /mnt/bin/src/data_info/CheckSchema.py
+               /mnt/input/pokemon-bad.csv"]
+        volumeMounts:
+          - name: workflow-tmp
+            mountPath: /mnt
+
+    # worker template for task-5 remove duplicated rows
+    - name: remove-duplicated-rows-wt
+      container:
+        image: liupengfei99/python38-ds
+        command: [sh, -c]
+        args: ["python -V && python /mnt/bin/src/data_cleaning/RemoveDuplicatedRows.py
+               /mnt/input/pokemon-bad.csv /mnt/tmp/pokemon-dedup.csv"]
+        volumeMounts:
+          - name: workflow-tmp
+            mountPath: /mnt
+
+    # worker template for task-5-1 remove duplicated rows
+    - name: copy-origin-input-file-wt
+      container:
+        image: busybox
+        command: [sh, -c]
+        args: ["cp /mnt/input/Pokemon-for-demo.csv /mnt/tmp/pokemon-dedup.csv"]
+        volumeMounts:
+          - name: workflow-tmp
+            mountPath: /mnt
+
+    # worker template for task-6 rename columns
+    - name: rename-column-wt
+      container:
+        image: liupengfei99/python38-ds
+        command: [sh, -c]
+        args: ["python -V && python /mnt/bin/src/data_cleaning/RenameColumns.py
+                /mnt/tmp/pokemon-dedup.csv /mnt/tmp/pokemon-cleaned.csv"]
+        volumeMounts:
+          - name: workflow-tmp
+            mountPath: /mnt
+
+    # worker template for task-7 enrich data
+    - name: enrich-data-wt
+      container:
+        image: liupengfei99/python38-ds
+        command: [sh, -c]
+        args: ["python -V && python /mnt/bin/src/data_transformation/GenerateAttackDefModeScore.py
+               /mnt/tmp/pokemon-cleaned.csv /mnt/tmp/pokemon-enriched.csv"]
+        volumeMounts:
+          - name: workflow-tmp
+            mountPath: /mnt
+
+    # worker template for task-8 check-enriched-data-shape
+    - name: check-enriched-data-shape-wt
+      container:
+        image: liupengfei99/python38-ds
+        command: [sh, -c]
+        args: ["python -V && python /mnt/bin/src/data_info/CheckShape.py
+               /mnt/tmp/pokemon-enriched.csv"]
+        volumeMounts:
+          - name: workflow-tmp
+            mountPath: /mnt
+
+    # worker template for task-9 predict-legendary-pokemon
+    - name: predict-legendary-pokemon-wt
+      container:
+        image: liupengfei99/python38-ds
+        command: [sh, -c]
+        args: ["python -V && python /mnt/bin/src/legendary_ml/LegendaryPokemonDT.py /mnt/tmp/pokemon-cleaned.csv
+               /mnt/tmp/random_forest_pokemon_legendary_classifier.sav
+               | tee /mnt/tmp/pokemon-ml-output.txt"]
+        volumeMounts:
+          - name: workflow-tmp
+            mountPath: /mnt
+
+    # worker template for task-10 get-all-time-best-pokemon-wt
+    - name: get-all-time-best-pokemon-wt
+      container:
+        image: liupengfei99/python38-ds
+        command: [sh, -c]
+        args: ["python -V && python /mnt/bin/src/basic_stats/GetBestPokemon.py /mnt/tmp/pokemon-enriched.csv
+                | tee /mnt/tmp/top-5-pokemon.csv"]
+        volumeMounts:
+          - name: workflow-tmp
+            mountPath: /mnt
+
+    # worker template for task-11 split-pokemon-by-generation-wt
+    - name: split-pokemon-by-generation-wt
+      container:
+        image: liupengfei99/python38-ds
+        command: [sh, -c]
+        args: ["python -V && python /mnt/bin/src/data_transformation/GeneratePokemonByGeneration.py
+               /mnt/tmp/pokemon-enriched.csv /mnt/tmp pokemon-gen"]
+        volumeMounts:
+          - name: workflow-tmp
+            mountPath: /mnt
+
+    # worker template for task-12 get-best-pokemon-of-each-generation-wt
+    - name: get-best-pokemon-of-each-generation-wt
+      inputs:
+        parameters:
+          - name: input-file-name
+      container:
+        image: liupengfei99/python38-ds
+        command: [sh, -c]
+        args: ["python -V && python /mnt/bin/src/basic_stats/GetBestPokemon.py
+               /mnt/tmp/{{inputs.parameters.input-file-name}}"]
+        volumeMounts:
+          - name: workflow-tmp
+            mountPath: /mnt
+
+    # worker template for task-13
+    - name: save-result-to-s3-wt
+      inputs:
+        parameters:
+          - name: file-name
+          - name: file-path
+      container:
+        image: busybox
+        command: [sh, -c]
+        args: ["echo save {{inputs.parameters.file-path}}/{{inputs.parameters.file-name}}
+                to s3://minio.lab.sspcloud.fr/argo-artifacts/tmp/;
+                cp {{inputs.parameters.file-path}}/{{inputs.parameters.file-name}}
+                   /tmp/{{inputs.parameters.file-name}}"]
+        volumeMounts:
+          - name: workflow-tmp
+            mountPath: /mnt
+          - name: out
+            mountPath: /tmp
+      # k8sapi executor does not support outputs from base image laye, have to use a emptyDir
+      volumes:
+        - name: out
+          emptyDir: { }
+      outputs:
+        artifacts:
+          - name: output-file
+            path: "/tmp/{{inputs.parameters.file-name}}"
+            s3:
+              endpoint: minio.lab.sspcloud.fr
+              bucket: argo-artifacts
+              key: "tmp/{{inputs.parameters.file-name}}.tgz"
+              accessKeySecret:
+                name: prod-minio-cred
+                key: accessKey
+              secretKeySecret:
+                name: prod-minio-cred
+                key: secretKey
