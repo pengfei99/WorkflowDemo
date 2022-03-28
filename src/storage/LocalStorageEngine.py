@@ -30,7 +30,8 @@ class LocalStorageEngine(StorageEngineInterface):
     def get_storage_engine_type(self) -> str:
         return self.storage_engine_type
 
-    def get_short_file_name(self, file_name: str):
+    @staticmethod
+    def get_short_file_name(file_name: str):
         return file_name
 
     @staticmethod

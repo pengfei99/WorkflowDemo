@@ -63,8 +63,8 @@ class StorageEngineInterface(metaclass=abc.ABCMeta):
     # For s3, the file name (object key) of s3://pengfei/tmp/sql_backup/2022-01-11_test_pg_bck.sql is
     # tmp/sql_backup/2022-01-11_test_pg_bck.sql.
     # So we need to have one specific implementation for each StorageEngine
-    @abc.abstractmethod
-    def get_short_file_name(self, file_name: str):
+    @staticmethod
+    def get_short_file_name(file_name: str):
         """
          This function extract the short file name from the s3 object key
         :param file_name: the raw file name for the storage engine
