@@ -20,7 +20,7 @@ def main():
     secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
     session_token = os.getenv("AWS_SESSION_TOKEN")
     storage_engine = S3StorageEngine(endpoint, access_key, secret_key, session_token)
-    file_name = storage_engine.get_short_file_name(remote_file_path)
+    file_name = S3StorageEngine.get_short_file_name(remote_file_path)
     dest_file_path = f"{data_folder}/{file_name}"
     if storage_engine.download_data(remote_file_path, dest_file_path):
         my_logger.info(f"Downloading data from {remote_file_path} to {dest_file_path}")
