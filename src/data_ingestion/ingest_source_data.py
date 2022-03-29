@@ -4,7 +4,7 @@ import sys
 from src.log.LogManager import LogManager
 from src.storage.S3StorageEngine import S3StorageEngine
 
-my_logger = LogManager(__name__).get_logger()
+my_logger = LogManager(__name__,enable_file_handler=True, log_file_path=os.getenv("LOG_PATH")).get_logger()
 my_logger.debug("Init ingest_source_data")
 
 
@@ -12,6 +12,7 @@ def main():
     if len(sys.argv) != 3:
         my_logger.error(
             'Number of arguments that you give is wrong, please enter the path of the file which you want to analyze.')
+        sys.exit(1)
     else:
         remote_file_path = sys.argv[1]
         data_folder = sys.argv[2]
