@@ -8,6 +8,9 @@ authors = ["pengfei <liu.pengfei@hotmail.fr>"]
 python = "^3.8"
 boto3 = "^1.21.27"
 pandas-profiling = "^3.1.0"
+pyspark = "^3.2.1"
+SQLAlchemy = "^1.4.32"
+psycopg2-binary = "^2.9.3"
 
 [tool.poetry.dev-dependencies]
 
