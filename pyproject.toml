@@ -11,6 +11,7 @@ pandas-profiling = "^3.1.0"
 pyspark = "^3.2.1"
 SQLAlchemy = "^1.4.32"
 psycopg2-binary = "^2.9.3"
+pyarrow = "^7.0.0"
 
 [tool.poetry.dev-dependencies]
 
