@@ -14,10 +14,41 @@ spec:
             { "file-path": "/mnt/tmp", "file-name": "pokemon-ml-output.txt" },
             { "file-path": "/mnt/tmp", "file-name": "top-5-pokemon.csv" }
           ]
+      - name: aws-access-id
+        value: ""
+      - name: aws-secret-key
+        value: ""
+      - name: aws-session-token
+        value: ""
+      - name: aws-default-region
+        value: "us-east-1"
+      - name: aws-s3-endpoint
+        value: "minio.lab.sspcloud.fr"
+      # The mlflow tracking server is responsable to log the hyper-parameter and model metrics,
+      # You can create it inside the datalab, and copy the url. Below is an example
+      # https://pengfei-mlflow-7841853311341079041-mlflow-ihm.kub.sspcloud.fr/
+      - name: mlflow-tracking-uri
+        value: 'https://user-pengfei-786489.kub.sspcloud.fr'
+      - name: mlflow-experiment-name
+        value: "pokemon"
+      - name: mlflow-s3-url
+        value: "https://minio.lab.sspcloud.fr"
+      - name: code-source-repo
+        value: "https://github.com/pengfei99/mlflow-pokemon-example.git"
+      - name: model-training-conf-list
+        value: |
+          [
+            { "data": "https://minio.lab.sspcloud.fr/pengfei/mlflow-demo/pokemon-partial.csv", "nestimator": 90, "maxDepth": 30,"minSamplesSplit": 2},
+            { "data": "https://minio.lab.sspcloud.fr/pengfei/mlflow-demo/pokemon-partial.csv", "nestimator": 70, "maxDepth": 30,"minSamplesSplit": 2},
+            { "data": "https://minio.lab.sspcloud.fr/pengfei/mlflow-demo/pokemon-new.csv", "nestimator": 50, "maxDepth": 30,"minSamplesSplit": 2},
+            { "data": "https://minio.lab.sspcloud.fr/pengfei/mlflow-demo/pokemon-new.csv", "nestimator": 70, "maxDepth": 30,"minSamplesSplit": 2},
+            { "data": "https://minio.lab.sspcloud.fr/pengfei/mlflow-demo/pokemon-cleaned.csv", "nestimator": 50, "maxDepth": 30,"minSamplesSplit": 2},
+            { "data": "https://minio.lab.sspcloud.fr/pengfei/mlflow-demo/pokemon-cleaned.csv", "nestimator": 70, "maxDepth": 30,"minSamplesSplit": 2} 
+          ]
   # Create a pvc for the workflow
   volumeClaimTemplates:
     - metadata:
-        name: workflow-tmp
+        name: pokemon-workflow-tmp
       spec:
         # The CephFS storage class accept three access mode:
         # ReadWriteOnce
@@ -128,20 +159,8 @@ spec:
           - name: code
             path: /mnt/bin
             git:
-              repo: https://github.com/pengfei99/argoDataPipeline.git
+              repo: https://github.com/pengfei99/WorkflowDemo.git
               revision: "main"
-          - name: input-data
-            path: /mnt/input
-            s3:
-              endpoint: minio.lab.sspcloud.fr
-              bucket: argo-artifacts
-              key: data-pipeline/demo/input
-              accessKeySecret:
-                name: prod-minio-cred
-                key: accessKey
-              secretKeySecret:
-                name: prod-minio-cred
-                key: secretKey
       container:
         image: busybox
         command: [sh, -c]
