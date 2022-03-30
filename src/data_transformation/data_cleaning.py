@@ -4,6 +4,8 @@ import sys
 from string import Template
 
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from src.log.LogManager import LogManager
 
@@ -18,12 +20,15 @@ def rename_column_names(input_df, column_rename_list):
 
 
 def main():
-    if len(sys.argv) != 2:
+    if len(sys.argv) != 5:
         my_logger.error(
             'Number of arguments that you give is wrong, please enter the path of the file which you want to analyze.')
     else:
         data_folder = sys.argv[1]
-        input_path = f"{data_folder}/pokemon-dedup.csv"
+        input_file_name = sys.argv[2]
+        output_file_name = sys.argv[3]
+        output_file_format = sys.argv[4]
+        input_path = f"{data_folder}/{input_file_name}"
         input_df = pd.read_csv(input_path)
         result_str = '###################################################\n' \
                      '$rename_col_size columns has been renamed from the data set in path:\n' \
@@ -51,12 +56,19 @@ def main():
                               }
 
         rename_col_size, output_df = rename_column_names(input_df, column_rename_list)
-        output_path=f"{data_folder}/pokemon-cleaned.csv"
-        output_df.to_csv(output_path, index=0)
+        output_path = f"{data_folder}/{output_file_name}"
+        if output_file_format == "parquet":
+            table = pa.Table.from_pandas(df=output_df)
+            pq.write_table(table, output_path)
+        elif output_file_format == "csv":
+            output_df.to_csv(output_path, index=0)
+        else:
+            my_logger.error("unsupported file format")
+            sys.exit(1)
         head = output_df.head(5).to_string()
         result = temp_obj.substitute(rename_col_size=rename_col_size, input_path=input_path,
                                      output_path=output_path, head=head)
-        my_logger.info("\n"+result)
+        my_logger.info("\n" + result)
 
 
 if __name__ == "__main__":
