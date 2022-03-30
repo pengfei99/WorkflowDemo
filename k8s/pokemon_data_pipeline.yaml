@@ -162,12 +162,23 @@ spec:
               repo: https://github.com/pengfei99/WorkflowDemo.git
               revision: "main"
       container:
-        image: busybox
+        image: liupengfei99/python38-ds
         command: [sh, -c]
-        args: ["mkdir -p /mnt/tmp /mnt/output; ls -l /mnt/bin /mnt/input /mnt/tmp /mnt/output"]
+        args: ["mkdir -p /mnt/data ; python ls -l /mnt/bin /mnt/input /mnt/tmp /mnt/output"]
         volumeMounts:
           - name: workflow-tmp
             mountPath: /mnt
+        env:
+          - name: AWS_SECRET_ACCESS_KEY
+            value: "{{workflow.parameters.aws-secret-key}}"
+          - name: AWS_DEFAULT_REGION
+            value: "{{workflow.parameters.aws-default-region}}"
+          - name: AWS_S3_ENDPOINT
+            value: "{{workflow.parameters.aws-s3-endpoint}}"
+          - name: AWS_SESSION_TOKEN
+            value: "{{workflow.parameters.aws-session-token}}"
+          - name: AWS_ACCESS_KEY_ID
+            value: "{{workflow.parameters.aws-access-id}}"
 
     # worker template for task-1 check-duplicated-rows
     - name: check-duplicated-rows-wt
