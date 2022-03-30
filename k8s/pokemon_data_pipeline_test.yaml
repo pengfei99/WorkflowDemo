@@ -7,7 +7,9 @@ spec:
   arguments:
     parameters:
       - name: input-data-path
-        value: "s3a://pengfei/workflow-demo/pokemon-raw.csv"
+        value: "s3a://pengfei/workflow_demo/pokemon/pokemon-raw.csv"
+      - name: log-path
+          value: "/mnt/data"
       - name: output-file-list
         value: |
           [
@@ -85,9 +87,9 @@ spec:
       container:
         image: liupengfei99/python38-ds
         command: [sh, -c]
-        args: ["mkdir -p /mnt/data ; python /mnt/bin/WorkflowDemo/src/data_ingestion/ingest_source_data.py {{workflow.parameters.input-data-path}} /mnt/data/; ls -l /mnt/bin /mnt/data"]
+        args: ["mkdir -p /mnt/data ; python /mnt/bin/src/data_ingestion/ingest_source_data.py {{workflow.parameters.input-data-path}} /mnt/data/; ls -l /mnt/bin /mnt/data"]
         volumeMounts:
-          - name: workflow-tmp
+          - name: pokemon-workflow-tmp
             mountPath: /mnt
         env:
           - name: AWS_SECRET_ACCESS_KEY
@@ -100,4 +102,8 @@ spec:
             value: "{{workflow.parameters.aws-session-token}}"
           - name: AWS_ACCESS_KEY_ID
             value: "{{workflow.parameters.aws-access-id}}"
+          - name: PYTHONPATH
+              value: "${PYTHONPATH}:/mnt/bin"
+          - name: LOG_PATH
+              value: "{{workflow.parameters.log-path}}"
 
