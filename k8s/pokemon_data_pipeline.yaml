@@ -6,13 +6,31 @@ spec:
   entrypoint: main
   arguments:
     parameters:
+      - name: "input-data-path"
+        value: "s3a://pengfei/workflow_demo/pokemon/pokemon-raw.csv"
+      - name: working-data-folder
+        value: "/mnt/data"
+      - name: "destination"
+        value: "s3a://pengfei/workflow_demo/pokemon/target"
+      - name: report-name
+        value: "pokemon-profile-report.html"
+      - name: db-login
+        value: ""
+      - name: db-pwd
+        value: ""
+      - name: db-hostname
+        value: ""
+      - name: db-port
+        value: ""
+      - name: db-name
+        value: ""
+      - name: db-table-name
+        value: ""
       - name: output-file-list
         value: |
           [
-            { "file-path": "/mnt/tmp", "file-name": "pokemon-enriched.csv" },
-            { "file-path": "/mnt/tmp", "file-name": "random_forest_pokemon_legendary_classifier.sav" },
-            { "file-path": "/mnt/tmp", "file-name": "pokemon-ml-output.txt" },
-            { "file-path": "/mnt/tmp", "file-name": "top-5-pokemon.csv" }
+            { "file-path": "/mnt/data", "file-name": "pokemon-cleaned.csv" },
+            { "file-path": "/mnt/data", "file-name": "pokemon-cleaned.parquet" }
           ]
       - name: aws-access-id
         value: ""
@@ -24,37 +42,11 @@ spec:
         value: "us-east-1"
       - name: aws-s3-endpoint
         value: "minio.lab.sspcloud.fr"
-      # The mlflow tracking server is responsable to log the hyper-parameter and model metrics,
-      # You can create it inside the datalab, and copy the url. Below is an example
-      # https://pengfei-mlflow-7841853311341079041-mlflow-ihm.kub.sspcloud.fr/
-      - name: mlflow-tracking-uri
-        value: 'https://user-pengfei-786489.kub.sspcloud.fr'
-      - name: mlflow-experiment-name
-        value: "pokemon"
-      - name: mlflow-s3-url
-        value: "https://minio.lab.sspcloud.fr"
-      - name: code-source-repo
-        value: "https://github.com/pengfei99/mlflow-pokemon-example.git"
-      - name: model-training-conf-list
-        value: |
-          [
-            { "data": "https://minio.lab.sspcloud.fr/pengfei/mlflow-demo/pokemon-partial.csv", "nestimator": 90, "maxDepth": 30,"minSamplesSplit": 2},
-            { "data": "https://minio.lab.sspcloud.fr/pengfei/mlflow-demo/pokemon-partial.csv", "nestimator": 70, "maxDepth": 30,"minSamplesSplit": 2},
-            { "data": "https://minio.lab.sspcloud.fr/pengfei/mlflow-demo/pokemon-new.csv", "nestimator": 50, "maxDepth": 30,"minSamplesSplit": 2},
-            { "data": "https://minio.lab.sspcloud.fr/pengfei/mlflow-demo/pokemon-new.csv", "nestimator": 70, "maxDepth": 30,"minSamplesSplit": 2},
-            { "data": "https://minio.lab.sspcloud.fr/pengfei/mlflow-demo/pokemon-cleaned.csv", "nestimator": 50, "maxDepth": 30,"minSamplesSplit": 2},
-            { "data": "https://minio.lab.sspcloud.fr/pengfei/mlflow-demo/pokemon-cleaned.csv", "nestimator": 70, "maxDepth": 30,"minSamplesSplit": 2} 
-          ]
   # Create a pvc for the workflow
   volumeClaimTemplates:
     - metadata:
         name: pokemon-workflow-tmp
       spec:
-        # The CephFS storage class accept three access mode:
-        # ReadWriteOnce
-        # ReadOnlyMany
-        # ReadWriteMany
-        # But not the rook-ceph-block storage class. It only supports ReadWriteOnce
         accessModes: [ "ReadWriteOnce" ]
         resources:
           requests:
@@ -72,81 +64,70 @@ spec:
             template: load-code-and-data-wt
           # task 1: check duplicated rows
           - name: check-duplicated-rows
-            dependencies: [load-code-and-data]
+            dependencies: [ load-code-and-data ]
             template: check-duplicated-rows-wt
-          # task 2: check missing values
-          - name: check-missing-value
-            dependencies: [load-code-and-data]
-            template: check-missing-value-wt
-          # task 3: check data set shape
-          - name: check-raw-data-shape
-            dependencies: [load-code-and-data]
-            template: check-raw-data-shape-wt
-          # task 4: check missing values
-          - name: check-data-schema
-            dependencies: [load-code-and-data]
-            template: check-data-schema-wt
-          # task 5: remove duplicated rows,this task is activated when task 1 detects duplication
+          # task 2: remove duplicated rows,this task is activated when task 1 detects duplication
           - name: remove-duplicated-rows
-            dependencies: [check-duplicated-rows,check-missing-value]
+            dependencies: [ check-duplicated-rows]
             template: remove-duplicated-rows-wt
             when: "{{tasks.check-duplicated-rows.outputs.parameters.has-duplicated-rows}} == True"
-          # task 5-1: if no duplicated rows, copy the origin input file
+
+          # task 2-1: if no duplicated rows, copy the origin input file
           - name: copy-origin-input-file
-            dependencies: [check-duplicated-rows,check-missing-value]
+            dependencies: [ check-duplicated-rows]
             template: copy-origin-input-file-wt
             when: "{{tasks.check-duplicated-rows.outputs.parameters.has-duplicated-rows}} == False"
-          # task 6: rename column name
-          - name: rename-column
-            dependencies: [remove-duplicated-rows, copy-origin-input-file]
-            template: rename-column-wt
-          # task 7: enrich data by adding new pokemon score columns
+
+          # task 3: generate parquet file
+          - name: clean-data-generate-parquet
+            dependencies: [ remove-duplicated-rows, copy-origin-input-file ]
+            template: clean-data-generate-parquet-wt
+
+          # task 3-1: generate csv file
+          - name: clean-data-generate-csv
+            dependencies: [ remove-duplicated-rows, copy-origin-input-file ]
+            template: clean-data-generate-csv-wt
+
+          # task 4: enrich data by adding new pokemon score columns
           - name: enrich-data
-            dependencies: [rename-column]
+            dependencies: [ clean-data-generate-csv ]
             template: enrich-data-wt
-          # task 8: check data shape after data enriched
-          - name: check-enriched-data-shape
-            dependencies: [enrich-data]
-            template: check-enriched-data-shape-wt
-          # task 9: ml for legendary pokemon
-          - name: predict-legendary-pokemon
-            dependencies: [rename-column]
-            template: predict-legendary-pokemon-wt
-          # task 10: Get top 5 best pokemon of all generation
-          - name: get-all-time-best-pokemon
-            dependencies: [enrich-data]
-            template: get-all-time-best-pokemon-wt
-          # task 11: split pokemon by their generation
-          - name: split-pokemon-by-generation
-            dependencies: [enrich-data]
-            template: split-pokemon-by-generation-wt
-          # task 12: Get top 5 best pokemon of each generation
-          - name: get-best-pokemon-of-each-generation
-            dependencies: [split-pokemon-by-generation]
-            template: get-best-pokemon-of-each-generation-wt
-            arguments:
-              parameters:
-                - name: input-file-name
-                  value: "pokemon-gen-{{item}}.csv"
-            withItems:
-              - 1
-              - 2
-              - 3
-              - 4
-              - 5
-              - 6
-          # task 13: Save results to s3
-          - name: save-result-to-s3
-            dependencies: [get-best-pokemon-of-each-generation,predict-legendary-pokemon,get-all-time-best-pokemon]
-            template: save-result-to-s3-wt
+
+          # task 5: generate report
+          - name: generate-data-profile-report
+            dependencies: [ clean-data-generate-csv ]
+            template: generate-data-profile-report-wt
+
+          # task 6: populate db
+          - name: populate-database
+            dependencies: [ enrich-data ]
+            template: populate-db-wt
+
+          # task 7: upload data
+          # upload to s3 will remove the source file, so it must run after generate report
+          - name: save-data-to-s3
+            dependencies: [ generate-data-profile-report, clean-data-generate-parquet ]
+            template: save-data-to-s3-wt
             arguments:
               parameters:
                 - name: file-path
                   value: "{{item.file-path}}"
                 - name: file-name
                   value: "{{item.file-name}}"
-            # pass the inputs to the step "withParam"
             withParam: "{{workflow.parameters.output-file-list}}"
+
+          # task 8: upload report
+          - name: save-report-to-s3
+            dependencies: [ generate-data-profile-report ]
+            template: save-report-to-s3-wt
+
+          # task 9: upload workflow log file
+          - name: save-log-to-s3
+            dependencies: [ save-report-to-s3, save-data-to-s3, populate-database ]
+            template: save-log-to-s3-wt
+
+
+
     ####################################################################################################################
     #################### task template for implementing the logic of each task of the pipeline #########################
     ####################################################################################################################
@@ -164,9 +145,10 @@ spec:
       container:
         image: liupengfei99/python38-ds
         command: [sh, -c]
-        args: ["mkdir -p /mnt/data ; python ls -l /mnt/bin /mnt/input /mnt/tmp /mnt/output"]
+        args: ["mkdir -p /mnt/data ; python /mnt/bin/src/data_ingestion/ingest_source_data.py 
+               {{workflow.parameters.input-data-path}} /mnt/data/; ls -l /mnt/bin /mnt/data"]
         volumeMounts:
-          - name: workflow-tmp
+          - name: pokemon-workflow-tmp
             mountPath: /mnt
         env:
           - name: AWS_SECRET_ACCESS_KEY
@@ -179,193 +161,224 @@ spec:
             value: "{{workflow.parameters.aws-session-token}}"
           - name: AWS_ACCESS_KEY_ID
             value: "{{workflow.parameters.aws-access-id}}"
+          - name: PYTHONPATH
+              value: "${PYTHONPATH}:/mnt/bin"
+          - name: LOG_PATH
+              value: "{{workflow.parameters.working-data-folder}}"
+          # worker template for task-0 load code source and data
 
-    # worker template for task-1 check-duplicated-rows
+    # worker template for task-1 check duplicated rows
     - name: check-duplicated-rows-wt
       container:
         image: liupengfei99/python38-ds
-        command: [sh, -c]
-        args: ["python -V && python /mnt/bin/src/data_quality/CheckDuplication.py
-               /mnt/input/pokemon-bad.csv /mnt/tmp/output-params.txt | tee /mnt/tmp/Duplicated_rows.txt"]
+        command: [ sh, -c ]
+        args: [ "python /mnt/bin/src/data_quality/check_duplication.py 
+                 {{workflow.parameters.input-data-path}} 
+                 {{workflow.parameters.working-data-folder}}" ]
         volumeMounts:
-          - name: workflow-tmp
+          - name: pokemon-workflow-tmp
             mountPath: /mnt
+        env:
+          - name: PYTHONPATH
+            value: "${PYTHONPATH}:/mnt/bin"
+          - name: LOG_PATH
+            value: "{{workflow.parameters.working-data-folder}}"
       outputs:
         parameters:
           - name: has-duplicated-rows
             valueFrom:
               # Default value to use if retrieving valueFrom fails. If not provided workflow will fail instead
               default: "True"
-              path: /mnt/tmp/output-params.txt
+              path: /mnt/data/output-params.txt
 
-    # worker template for task-2 check-missing-values
-    - name: check-missing-value-wt
-      container:
-        image: liupengfei99/python38-ds
-        command: [sh, -c]
-        args: ["python -V && python /mnt/bin/src/data_quality/CheckMissingValue.py
-                   /mnt/input/pokemon-bad.csv | tee /mnt/tmp/MissingValue.txt"]
-        volumeMounts:
-          - name: workflow-tmp
-            mountPath: /mnt
-
-    # worker template for task-3 check-data-shape
-    - name: check-raw-data-shape-wt
-      container:
-        image: liupengfei99/python38-ds
-        command: [sh, -c]
-        args: ["python -V && python /mnt/bin/src/data_info/CheckShape.py
-               /mnt/input/pokemon-bad.csv"]
-        volumeMounts:
-          - name: workflow-tmp
-            mountPath: /mnt
-
-    # worker template for task-4 check-data-schema
-    - name: check-data-schema-wt
-      container:
-        image: liupengfei99/python38-ds
-        command: [sh, -c]
-        args: ["python -V && python /mnt/bin/src/data_info/CheckSchema.py
-               /mnt/input/pokemon-bad.csv"]
-        volumeMounts:
-          - name: workflow-tmp
-            mountPath: /mnt
-
-    # worker template for task-5 remove duplicated rows
+    # worker template for task-2 remove duplicated rows,this task is activated when task 1 detects duplication
     - name: remove-duplicated-rows-wt
       container:
         image: liupengfei99/python38-ds
-        command: [sh, -c]
-        args: ["python -V && python /mnt/bin/src/data_cleaning/RemoveDuplicatedRows.py
-               /mnt/input/pokemon-bad.csv /mnt/tmp/pokemon-dedup.csv"]
+        command: [ sh, -c ]
+        args: [ "python /mnt/bin/src/data_transformation/remove_duplication.py {{workflow.parameters.input-data-path}} 
+                 {{workflow.parameters.working-data-folder}}" ]
         volumeMounts:
-          - name: workflow-tmp
+          - name: pokemon-workflow-tmp
             mountPath: /mnt
+        env:
+          - name: PYTHONPATH
+            value: "${PYTHONPATH}:/mnt/bin"
+          - name: LOG_PATH
+            value: "{{workflow.parameters.working-data-folder}}"
 
-    # worker template for task-5-1 remove duplicated rows
+    # worker template for task-2-1 if no duplicated rows, copy the origin input file
     - name: copy-origin-input-file-wt
       container:
         image: busybox
-        command: [sh, -c]
-        args: ["cp /mnt/input/Pokemon-for-demo.csv /mnt/tmp/pokemon-dedup.csv"]
+        command: [ sh, -c ]
+        args: [ "cp {{workflow.parameters.working-data-folder}}/pokemon-raw.csv {{workflow.parameters.working-data-folder}}/pokemon-dedup.csv" ]
         volumeMounts:
-          - name: workflow-tmp
+          - name: pokemon-workflow-tmp
             mountPath: /mnt
 
-    # worker template for task-6 rename columns
-    - name: rename-column-wt
+    # worker template for task 3: rename columns and generate parquet file
+    - name: clean-data-generate-parquet-wt
       container:
         image: liupengfei99/python38-ds
-        command: [sh, -c]
-        args: ["python -V && python /mnt/bin/src/data_cleaning/RenameColumns.py
-                /mnt/tmp/pokemon-dedup.csv /mnt/tmp/pokemon-cleaned.csv"]
+        command: [ sh, -c ]
+        args: [ "python /mnt/bin/src/data_transformation/data_cleaning.py {{workflow.parameters.working-data-folder}}
+                  pokemon-dedup.csv pokemon-cleaned.parquet parquet" ]
         volumeMounts:
-          - name: workflow-tmp
+          - name: pokemon-workflow-tmp
             mountPath: /mnt
+        env:
+          - name: PYTHONPATH
+            value: "${PYTHONPATH}:/mnt/bin"
+          - name: LOG_PATH
+            value: "{{workflow.parameters.working-data-folder}}"
 
-    # worker template for task-7 enrich data
+    # worker template for task 3-1: rename columns and generate csv file
+    - name: clean-data-generate-csv-wt
+      container:
+        image: liupengfei99/python38-ds
+        command: [ sh, -c ]
+        args: [ "python /mnt/bin/src/data_transformation/data_cleaning.py {{workflow.parameters.working-data-folder}}
+                pokemon-dedup.csv pokemon-cleaned.csv csv" ]
+        volumeMounts:
+          - name: pokemon-workflow-tmp
+            mountPath: /mnt
+        env:
+          - name: PYTHONPATH
+            value: "${PYTHONPATH}:/mnt/bin"
+          - name: LOG_PATH
+            value: "{{workflow.parameters.working-data-folder}}"
+
+    # worker template for task 4 enrich data
     - name: enrich-data-wt
       container:
         image: liupengfei99/python38-ds
-        command: [sh, -c]
-        args: ["python -V && python /mnt/bin/src/data_transformation/GenerateAttackDefModeScore.py
-               /mnt/tmp/pokemon-cleaned.csv /mnt/tmp/pokemon-enriched.csv"]
+        command: [ sh, -c ]
+        args: [ "python /mnt/bin/src/data_transformation/generate_pokemon_score.py
+                 {{workflow.parameters.working-data-folder}} pokemon-cleaned.csv pokemon-enriched.csv" ]
         volumeMounts:
-          - name: workflow-tmp
+          - name: pokemon-workflow-tmp
             mountPath: /mnt
+        env:
+          - name: PYTHONPATH
+            value: "${PYTHONPATH}:/mnt/bin"
+          - name: LOG_PATH
+            value: "{{workflow.parameters.working-data-folder}}"
 
-    # worker template for task-8 check-enriched-data-shape
-    - name: check-enriched-data-shape-wt
+
+    # worker template for task 5 generate report
+    - name: generate-data-profile-report-wt
       container:
         image: liupengfei99/python38-ds
-        command: [sh, -c]
-        args: ["python -V && python /mnt/bin/src/data_info/CheckShape.py
-               /mnt/tmp/pokemon-enriched.csv"]
+        command: [ sh, -c ]
+        args: [ "python /mnt/bin/src/data_profiling/generate_data_profile.py 
+               {{workflow.parameters.working-data-folder}} pokemon-cleaned.csv {{workflow.parameters.report-name}} " ]
         volumeMounts:
-          - name: workflow-tmp
+          - name: pokemon-workflow-tmp
             mountPath: /mnt
+        env:
+          - name: PYTHONPATH
+            value: "${PYTHONPATH}:/mnt/bin"
+          - name: LOG_PATH
+            value: "{{workflow.parameters.working-data-folder}}"
 
-    # worker template for task-9 predict-legendary-pokemon
-    - name: predict-legendary-pokemon-wt
+    # worker template for task 6 populate db
+    - name: populate-db-wt
       container:
         image: liupengfei99/python38-ds
-        command: [sh, -c]
-        args: ["python -V && python /mnt/bin/src/legendary_ml/LegendaryPokemonDT.py /mnt/tmp/pokemon-cleaned.csv
-               /mnt/tmp/random_forest_pokemon_legendary_classifier.sav
-               | tee /mnt/tmp/pokemon-ml-output.txt"]
+        command: [ sh, -c ]
+        args: [ "python /mnt/bin/src/data_ingestion/postgres_data_loader.py {{workflow.parameters.working-data-folder}}
+                 pokemon-enriched.csv {{workflow.parameters.db-login}} {{workflow.parameters.db-pwd}}  
+                 {{workflow.parameters.db-hostname}} {{workflow.parameters.db-port}} 
+                 {{workflow.parameters.db-name}} {{workflow.parameters.db-table-name}}" ]
         volumeMounts:
-          - name: workflow-tmp
+          - name: pokemon-workflow-tmp
             mountPath: /mnt
+        env:
+          - name: PYTHONPATH
+            value: "${PYTHONPATH}:/mnt/bin"
+          - name: LOG_PATH
+            value: "{{workflow.parameters.working-data-folder}}"
 
-    # worker template for task-10 get-all-time-best-pokemon-wt
-    - name: get-all-time-best-pokemon-wt
-      container:
-        image: liupengfei99/python38-ds
-        command: [sh, -c]
-        args: ["python -V && python /mnt/bin/src/basic_stats/GetBestPokemon.py /mnt/tmp/pokemon-enriched.csv
-                | tee /mnt/tmp/top-5-pokemon.csv"]
-        volumeMounts:
-          - name: workflow-tmp
-            mountPath: /mnt
 
-    # worker template for task-11 split-pokemon-by-generation-wt
-    - name: split-pokemon-by-generation-wt
-      container:
-        image: liupengfei99/python38-ds
-        command: [sh, -c]
-        args: ["python -V && python /mnt/bin/src/data_transformation/GeneratePokemonByGeneration.py
-               /mnt/tmp/pokemon-enriched.csv /mnt/tmp pokemon-gen"]
-        volumeMounts:
-          - name: workflow-tmp
-            mountPath: /mnt
-
-    # worker template for task-12 get-best-pokemon-of-each-generation-wt
-    - name: get-best-pokemon-of-each-generation-wt
-      inputs:
-        parameters:
-          - name: input-file-name
-      container:
-        image: liupengfei99/python38-ds
-        command: [sh, -c]
-        args: ["python -V && python /mnt/bin/src/basic_stats/GetBestPokemon.py
-               /mnt/tmp/{{inputs.parameters.input-file-name}}"]
-        volumeMounts:
-          - name: workflow-tmp
-            mountPath: /mnt
-
-    # worker template for task-13
-    - name: save-result-to-s3-wt
+    - name: save-data-to-s3-wt
       inputs:
         parameters:
           - name: file-name
           - name: file-path
       container:
-        image: busybox
-        command: [sh, -c]
-        args: ["echo save {{inputs.parameters.file-path}}/{{inputs.parameters.file-name}}
-                to s3://minio.lab.sspcloud.fr/argo-artifacts/tmp/;
-                cp {{inputs.parameters.file-path}}/{{inputs.parameters.file-name}}
-                   /tmp/{{inputs.parameters.file-name}}"]
+        image: liupengfei99/python38-ds
+        command: [ sh, -c ]
+        args: [ "python /mnt/bin/src/data_ingestion/s3_data_loader.py {{inputs.parameters.file-path}} 
+                 {{inputs.parameters.file-name}} {{workflow.parameters.destination}}" ]
         volumeMounts:
-          - name: workflow-tmp
+          - name: pokemon-workflow-tmp
             mountPath: /mnt
-          - name: out
-            mountPath: /tmp
-      # k8sapi executor does not support outputs from base image laye, have to use a emptyDir
-      volumes:
-        - name: out
-          emptyDir: { }
-      outputs:
-        artifacts:
-          - name: output-file
-            path: "/tmp/{{inputs.parameters.file-name}}"
-            s3:
-              endpoint: minio.lab.sspcloud.fr
-              bucket: argo-artifacts
-              key: "tmp/{{inputs.parameters.file-name}}.tgz"
-              accessKeySecret:
-                name: prod-minio-cred
-                key: accessKey
-              secretKeySecret:
-                name: prod-minio-cred
-                key: secretKey
+        env:
+          - name: PYTHONPATH
+            value: "${PYTHONPATH}:/mnt/bin"
+          - name: LOG_PATH
+            value: "{{workflow.parameters.working-data-folder}}"
+          - name: AWS_SECRET_ACCESS_KEY
+            value: "{{workflow.parameters.aws-secret-key}}"
+          - name: AWS_DEFAULT_REGION
+            value: "{{workflow.parameters.aws-default-region}}"
+          - name: AWS_S3_ENDPOINT
+            value: "{{workflow.parameters.aws-s3-endpoint}}"
+          - name: AWS_SESSION_TOKEN
+            value: "{{workflow.parameters.aws-session-token}}"
+          - name: AWS_ACCESS_KEY_ID
+            value: "{{workflow.parameters.aws-access-id}}"
+
+    - name: save-report-to-s3-wt
+      container:
+        image: liupengfei99/python38-ds
+        command: [ sh, -c ]
+        args: [ "python /mnt/bin/src/data_ingestion/s3_data_loader.py {{workflow.parameters.working-data-folder}}
+                   {{workflow.parameters.report-name}} {{workflow.parameters.destination}}" ]
+        volumeMounts:
+          - name: pokemon-workflow-tmp
+            mountPath: /mnt
+        env:
+          - name: PYTHONPATH
+            value: "${PYTHONPATH}:/mnt/bin"
+          - name: LOG_PATH
+            value: "{{workflow.parameters.working-data-folder}}"
+          - name: AWS_SECRET_ACCESS_KEY
+            value: "{{workflow.parameters.aws-secret-key}}"
+          - name: AWS_DEFAULT_REGION
+            value: "{{workflow.parameters.aws-default-region}}"
+          - name: AWS_S3_ENDPOINT
+            value: "{{workflow.parameters.aws-s3-endpoint}}"
+          - name: AWS_SESSION_TOKEN
+            value: "{{workflow.parameters.aws-session-token}}"
+          - name: AWS_ACCESS_KEY_ID
+            value: "{{workflow.parameters.aws-access-id}}"
+    - name: save-log-to-s3-wt
+      container:
+        image: liupengfei99/python38-ds
+        command: [ sh, -c ]
+        args: [ "python /mnt/bin/src/data_ingestion/s3_data_loader.py {{workflow.parameters.working-data-folder}}
+                     app.log {{workflow.parameters.destination}}" ]
+        volumeMounts:
+          - name: pokemon-workflow-tmp
+            mountPath: /mnt
+        env:
+          - name: PYTHONPATH
+            value: "${PYTHONPATH}:/mnt/bin"
+          - name: LOG_PATH
+            value: "{{workflow.parameters.working-data-folder}}"
+          - name: AWS_SECRET_ACCESS_KEY
+            value: "{{workflow.parameters.aws-secret-key}}"
+          - name: AWS_DEFAULT_REGION
+            value: "{{workflow.parameters.aws-default-region}}"
+          - name: AWS_S3_ENDPOINT
+            value: "{{workflow.parameters.aws-s3-endpoint}}"
+          - name: AWS_SESSION_TOKEN
+            value: "{{workflow.parameters.aws-session-token}}"
+          - name: AWS_ACCESS_KEY_ID
+            value: "{{workflow.parameters.aws-access-id}}"
+
+
+
+
