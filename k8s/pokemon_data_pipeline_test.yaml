@@ -10,6 +10,18 @@ spec:
         value: "s3a://pengfei/workflow_demo/pokemon/pokemon-raw.csv"
       - name: working-data-folder
         value: "/mnt/data"
+      - name: db-login
+        value: ""
+      - name: db-pwd
+        value: ""
+      - name: db-hostname
+        value: ""
+      - name: db-port
+        value: ""
+      - name: db-name
+        value: ""
+      - name: db-table-name
+        value: ""
       - name: output-file-list
         value: |
           [
@@ -97,8 +109,18 @@ spec:
 
           # task 4: enrich data by adding new pokemon score columns
           - name: enrich-data
-            dependencies: [ rename-column ]
+            dependencies: [ clean-data-generate-csv ]
             template: enrich-data-wt
+
+          # task 5: generate report
+          - name: generate-data-profile-report
+            dependencies: [ clean-data-generate-csv ]
+            template: generate-data-profile-report-wt
+
+          # task 6: populate db
+          - name: populate-database
+            dependencies: [ enrich-data ]
+            template: populate-db-wt
 
     ####################################################################################################################
     #################### task template for implementing the logic of each task of the pipeline #########################
@@ -228,6 +250,41 @@ spec:
         command: [ sh, -c ]
         args: [ "python /mnt/bin/src/data_transformation/generate_pokemon_score.py
                  {{workflow.parameters.working-data-folder}} pokemon-cleaned.csv pokemon-enriched.csv" ]
+        volumeMounts:
+          - name: pokemon-workflow-tmp
+            mountPath: /mnt
+        env:
+          - name: PYTHONPATH
+            value: "${PYTHONPATH}:/mnt/bin"
+          - name: LOG_PATH
+            value: "{{workflow.parameters.working-data-folder}}"
+
+
+    # worker template for task 5 generate report
+    - name: generate-data-profile-report-wt
+      container:
+        image: liupengfei99/python38-ds
+        command: [ sh, -c ]
+        args: [ "python /mnt/bin/src/data_profiling/generate_data_profile.py 
+               {{workflow.parameters.working-data-folder}} pokemon-cleaned.csv" ]
+        volumeMounts:
+          - name: pokemon-workflow-tmp
+            mountPath: /mnt
+        env:
+          - name: PYTHONPATH
+            value: "${PYTHONPATH}:/mnt/bin"
+          - name: LOG_PATH
+            value: "{{workflow.parameters.working-data-folder}}"
+
+    # worker template for task 6 populate db
+    - name: populate-db-wt
+      container:
+        image: liupengfei99/python38-ds
+        command: [ sh, -c ]
+        args: [ "python /mnt/bin/src/data_ingestion/postgres_data_loader.py {{workflow.parameters.working-data-folder}}
+                 pokemon-enriched.csv {{workflow.parameters.db-login}} {{workflow.parameters.db-pwd}}  
+                 {{workflow.parameters.db-hostname}} {{workflow.parameters.db-port}} 
+                 {{workflow.parameters.db-name}} {{workflow.parameters.db-table-name}}" ]
         volumeMounts:
           - name: pokemon-workflow-tmp
             mountPath: /mnt
