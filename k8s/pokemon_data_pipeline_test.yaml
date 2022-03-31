@@ -6,10 +6,10 @@ spec:
   entrypoint: main
   arguments:
     parameters:
-      - name: input-data-path
+      - name: "input-data-path"
         value: "s3a://pengfei/workflow_demo/pokemon/pokemon-raw.csv"
       - name: working-data-folder
-          value: "/mnt/data"
+        value: "/mnt/data"
       - name: output-file-list
         value: |
           [
@@ -78,11 +78,22 @@ spec:
             dependencies: [ check-duplicated-rows]
             template: remove-duplicated-rows-wt
             when: "{{tasks.check-duplicated-rows.outputs.parameters.has-duplicated-rows}} == True"
+
           # task 2-1: if no duplicated rows, copy the origin input file
           - name: copy-origin-input-file
             dependencies: [ check-duplicated-rows]
             template: copy-origin-input-file-wt
             when: "{{tasks.check-duplicated-rows.outputs.parameters.has-duplicated-rows}} == False"
+
+          # task 3: rename column name
+          - name: rename-column
+            dependencies: [ remove-duplicated-rows, copy-origin-input-file ]
+            template: rename-column-wt
+
+          # task 4: enrich data by adding new pokemon score columns
+          - name: enrich-data
+            dependencies: [ rename-column ]
+            template: enrich-data-wt
 
     ####################################################################################################################
     #################### task template for implementing the logic of each task of the pipeline #########################
@@ -119,9 +130,9 @@ spec:
           - name: PYTHONPATH
               value: "${PYTHONPATH}:/mnt/bin"
           - name: LOG_PATH
-              value: "{{workflow.parameters.log-path}}"
+              value: "{{workflow.parameters.working-data-folder}}"
           # worker template for task-0 load code source and data
-    - name: check-duplicated-rows
+    - name: check-duplicated-rows-wt
       container:
         image: liupengfei99/python38-ds
         command: [ sh, -c ]
@@ -129,28 +140,33 @@ spec:
         volumeMounts:
           - name: pokemon-workflow-tmp
             mountPath: /mnt
-        outputs:
-          parameters:
-            - name: has-duplicated-rows
-              valueFrom:
-                # Default value to use if retrieving valueFrom fails. If not provided workflow will fail instead
-                default: "True"
-                path: /mnt/data/output-params.txt
         env:
           - name: PYTHONPATH
-              value: "${PYTHONPATH}:/mnt/bin"
+            value: "${PYTHONPATH}:/mnt/bin"
           - name: LOG_PATH
-              value: "{{workflow.parameters.working-data-folder}}"
+            value: "{{workflow.parameters.working-data-folder}}"
+      outputs:
+        parameters:
+          - name: has-duplicated-rows
+            valueFrom:
+              # Default value to use if retrieving valueFrom fails. If not provided workflow will fail instead
+              default: "True"
+              path: /mnt/data/output-params.txt
 
     - name: remove-duplicated-rows-wt
       container:
         image: liupengfei99/python38-ds
         command: [ sh, -c ]
-        args: [ "python -V && python /mnt/bin/src/data_cleaning/RemoveDuplicatedRows.py
-                 /mnt/input/pokemon-bad.csv /mnt/tmp/pokemon-dedup.csv" ]
+        args: [ "python /mnt/bin/src/data_transformation/remove_duplication.py {{workflow.parameters.input-data-path}} 
+                 {{workflow.parameters.working-data-folder}}" ]
         volumeMounts:
-          - name: workflow-tmp
+          - name: pokemon-workflow-tmp
             mountPath: /mnt
+        env:
+          - name: PYTHONPATH
+            value: "${PYTHONPATH}:/mnt/bin"
+          - name: LOG_PATH
+            value: "{{workflow.parameters.working-data-folder}}"
 
     # worker template for task-5-1 remove duplicated rows
     - name: copy-origin-input-file-wt
@@ -159,7 +175,9 @@ spec:
         command: [ sh, -c ]
         args: [ "cp {{workflow.parameters.working-data-folder}}/pokemon-raw.csv {{workflow.parameters.working-data-folder}}/pokemon-dedup.csv" ]
         volumeMounts:
-          - name: workflow-tmp
+          - name: pokemon-workflow-tmp
             mountPath: /mnt
+
+
 
 
