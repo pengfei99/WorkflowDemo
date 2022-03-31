@@ -4,9 +4,8 @@ import pandas as pd
 from pandas_profiling import ProfileReport
 
 from src.log.LogManager import LogManager
-from src.utile import get_local_input_file_path
 
-my_logger = LogManager(__name__,enable_file_handler=True, log_file_path=os.getenv("LOG_PATH")).get_logger()
+my_logger = LogManager(__name__, enable_file_handler=True, log_file_path=os.getenv("LOG_PATH")).get_logger()
 my_logger.debug("Init ingest_source_data")
 
 
@@ -16,9 +15,9 @@ def main():
             'Number of arguments that you give is wrong, please enter the path of the file which you want to analyze.')
         sys.exit(1)
     else:
-        remote_file_path = sys.argv[1]
-        data_folder = sys.argv[2]
-    input_file_path, file_name = get_local_input_file_path(remote_file_path, data_folder)
+        data_folder = sys.argv[1]
+        file_name = sys.argv[2]
+    input_file_path = f"{data_folder}/{file_name}"
     df = pd.read_csv(input_file_path, sep=",", na_values=[""], index_col=0)
     my_logger.info("data sample :\n" + str(df.head(5)))
     profile = ProfileReport(df, title="pokemon_data_profiling", minimal=False, explorative=False)
