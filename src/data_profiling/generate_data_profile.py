@@ -7,7 +7,7 @@ from pandas_profiling import ProfileReport
 from src.log.LogManager import LogManager
 
 my_logger = LogManager(__name__, enable_file_handler=True, log_file_path=os.getenv("LOG_PATH")).get_logger()
-my_logger.debug("Init ingest_source_data")
+my_logger.debug(f"Init {__file__}")
 
 
 def main():

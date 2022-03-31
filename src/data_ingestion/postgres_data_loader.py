@@ -7,7 +7,7 @@ from sqlalchemy import create_engine
 from src.log.LogManager import LogManager
 
 my_logger = LogManager(__name__, enable_file_handler=True, log_file_path=os.getenv("LOG_PATH")).get_logger()
-my_logger.debug("Init postgres data loader")
+my_logger.debug(f"Init {__file__}")
 
 
 def main():
