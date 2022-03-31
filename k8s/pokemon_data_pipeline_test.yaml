@@ -10,6 +10,10 @@ spec:
         value: "s3a://pengfei/workflow_demo/pokemon/pokemon-raw.csv"
       - name: working-data-folder
         value: "/mnt/data"
+      - name: "destination"
+        value: "s3a://pengfei/workflow_demo/pokemon/target"
+      - name: report-name
+        value: "pokemon-profile-report.html"
       - name: db-login
         value: ""
       - name: db-pwd
@@ -25,10 +29,8 @@ spec:
       - name: output-file-list
         value: |
           [
-            { "file-path": "/mnt/tmp", "file-name": "pokemon-enriched.csv" },
-            { "file-path": "/mnt/tmp", "file-name": "random_forest_pokemon_legendary_classifier.sav" },
-            { "file-path": "/mnt/tmp", "file-name": "pokemon-ml-output.txt" },
-            { "file-path": "/mnt/tmp", "file-name": "top-5-pokemon.csv" }
+            { "file-path": "/mnt/data", "file-name": "pokemon-cleaned.csv" },
+            { "file-path": "/mnt/data", "file-name": "pokemon-cleaned.parquet" }
           ]
       - name: aws-access-id
         value: ""
@@ -121,6 +123,32 @@ spec:
           - name: populate-database
             dependencies: [ enrich-data ]
             template: populate-db-wt
+
+          # task 7: upload data
+          - name: save-data-to-s3
+            dependencies: [ clean-data-generate-csv, clean-data-generate-parquet ]
+            template: save-data-to-s3-wt
+            arguments:
+              parameters:
+                - name: file-path
+                  value: "{{item.file-path}}"
+                - name: file-name
+                  value: "{{item.file-name}}"
+                - name: destination
+                  value: "{{item.destination}}"
+            withParam: "{{workflow.parameters.output-file-list}}"
+
+          # task 8: upload report
+          - name: save-report-to-s3
+            dependencies: [ generate-data-profile-report ]
+            template: save-report-to-s3-wt
+
+          # task 9: upload workflow log file
+          - name: save-log-to-s3
+            dependencies: [ save-report-to-s3, save-data-to-s3, populate-database ]
+            template: save-log-to-s3-wt
+
+
 
     ####################################################################################################################
     #################### task template for implementing the logic of each task of the pipeline #########################
@@ -266,7 +294,7 @@ spec:
         image: liupengfei99/python38-ds
         command: [ sh, -c ]
         args: [ "python /mnt/bin/src/data_profiling/generate_data_profile.py 
-               {{workflow.parameters.working-data-folder}} pokemon-cleaned.csv" ]
+               {{workflow.parameters.working-data-folder}} pokemon-cleaned.csv {{workflow.parameters.report-name}} " ]
         volumeMounts:
           - name: pokemon-workflow-tmp
             mountPath: /mnt
@@ -293,6 +321,85 @@ spec:
             value: "${PYTHONPATH}:/mnt/bin"
           - name: LOG_PATH
             value: "{{workflow.parameters.working-data-folder}}"
+
+
+    - name: save-data-to-s3-wt
+      inputs:
+        parameters:
+          - name: file-name
+          - name: file-path
+      container:
+        image: liupengfei99/python38-ds
+        command: [ sh, -c ]
+        args: [ "python /mnt/bin/src/data_ingestion/s3_data_loader.py {{inputs.parameters.file-path}} 
+                 {{inputs.parameters.file-name}} {{workflow.parameters.destination}}" ]
+        volumeMounts:
+          - name: pokemon-workflow-tmp
+            mountPath: /mnt
+        env:
+          - name: PYTHONPATH
+            value: "${PYTHONPATH}:/mnt/bin"
+          - name: LOG_PATH
+            value: "{{workflow.parameters.working-data-folder}}"
+          - name: AWS_SECRET_ACCESS_KEY
+            value: "{{workflow.parameters.aws-secret-key}}"
+          - name: AWS_DEFAULT_REGION
+            value: "{{workflow.parameters.aws-default-region}}"
+          - name: AWS_S3_ENDPOINT
+            value: "{{workflow.parameters.aws-s3-endpoint}}"
+          - name: AWS_SESSION_TOKEN
+            value: "{{workflow.parameters.aws-session-token}}"
+          - name: AWS_ACCESS_KEY_ID
+            value: "{{workflow.parameters.aws-access-id}}"
+
+    - name: save-report-to-s3-wt
+      container:
+        image: liupengfei99/python38-ds
+        command: [ sh, -c ]
+        args: [ "python /mnt/bin/src/data_ingestion/s3_data_loader.py {{workflow.parameters.working-data-folder}}
+                   {{workflow.parameters.report-name}} {{workflow.parameters.destination}}" ]
+        volumeMounts:
+          - name: pokemon-workflow-tmp
+            mountPath: /mnt
+        env:
+          - name: PYTHONPATH
+            value: "${PYTHONPATH}:/mnt/bin"
+          - name: LOG_PATH
+            value: "{{workflow.parameters.working-data-folder}}"
+          - name: AWS_SECRET_ACCESS_KEY
+            value: "{{workflow.parameters.aws-secret-key}}"
+          - name: AWS_DEFAULT_REGION
+            value: "{{workflow.parameters.aws-default-region}}"
+          - name: AWS_S3_ENDPOINT
+            value: "{{workflow.parameters.aws-s3-endpoint}}"
+          - name: AWS_SESSION_TOKEN
+            value: "{{workflow.parameters.aws-session-token}}"
+          - name: AWS_ACCESS_KEY_ID
+            value: "{{workflow.parameters.aws-access-id}}"
+    - name: save-log-to-s3-wt
+      container:
+        image: liupengfei99/python38-ds
+        command: [ sh, -c ]
+        args: [ "python /mnt/bin/src/data_ingestion/s3_data_loader.py {{workflow.parameters.working-data-folder}}
+                     app.log {{workflow.parameters.destination}}" ]
+        volumeMounts:
+          - name: pokemon-workflow-tmp
+            mountPath: /mnt
+        env:
+          - name: PYTHONPATH
+            value: "${PYTHONPATH}:/mnt/bin"
+          - name: LOG_PATH
+            value: "{{workflow.parameters.working-data-folder}}"
+          - name: AWS_SECRET_ACCESS_KEY
+            value: "{{workflow.parameters.aws-secret-key}}"
+          - name: AWS_DEFAULT_REGION
+            value: "{{workflow.parameters.aws-default-region}}"
+          - name: AWS_S3_ENDPOINT
+            value: "{{workflow.parameters.aws-s3-endpoint}}"
+          - name: AWS_SESSION_TOKEN
+            value: "{{workflow.parameters.aws-session-token}}"
+          - name: AWS_ACCESS_KEY_ID
+            value: "{{workflow.parameters.aws-access-id}}"
 
 
 
