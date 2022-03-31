@@ -8,7 +8,7 @@ spec:
     parameters:
       - name: input-data-path
         value: "s3a://pengfei/workflow_demo/pokemon/pokemon-raw.csv"
-      - name: log-path
+      - name: data-path
           value: "/mnt/data"
       - name: output-file-list
         value: |
@@ -69,6 +69,20 @@ spec:
           # task 0: load code source and data
           - name: load-code-and-data
             template: load-code-and-data-wt
+          # task 1: check duplicated rows
+          - name: check-duplicated-rows
+            dependencies: [ load-code-and-data ]
+            template: check-duplicated-rows-wt
+          # task 2: remove duplicated rows,this task is activated when task 1 detects duplication
+          - name: remove-duplicated-rows
+            dependencies: [ check-duplicated-rows]
+            template: remove-duplicated-rows-wt
+            when: "{{tasks.check-duplicated-rows.outputs.parameters.has-duplicated-rows}} == True"
+          # task 2-1: if no duplicated rows, copy the origin input file
+          - name: copy-origin-input-file
+            dependencies: [ check-duplicated-rows]
+            template: copy-origin-input-file-wt
+            when: "{{tasks.check-duplicated-rows.outputs.parameters.has-duplicated-rows}} == False"
 
     ####################################################################################################################
     #################### task template for implementing the logic of each task of the pipeline #########################
@@ -106,4 +120,46 @@ spec:
               value: "${PYTHONPATH}:/mnt/bin"
           - name: LOG_PATH
               value: "{{workflow.parameters.log-path}}"
+          # worker template for task-0 load code source and data
+    - name: check-duplicated-rows
+      container:
+        image: liupengfei99/python38-ds
+        command: [ sh, -c ]
+        args: [ "python /mnt/bin/src/data_quality/check_duplication.py {{workflow.parameters.input-data-path}} {{workflow.parameters.data-path}}" ]
+        volumeMounts:
+          - name: pokemon-workflow-tmp
+            mountPath: /mnt
+        outputs:
+          parameters:
+            - name: has-duplicated-rows
+              valueFrom:
+                # Default value to use if retrieving valueFrom fails. If not provided workflow will fail instead
+                default: "True"
+                path: /mnt/data/output-params.txt
+        env:
+          - name: PYTHONPATH
+              value: "${PYTHONPATH}:/mnt/bin"
+          - name: LOG_PATH
+              value: "{{workflow.parameters.data-path}}"
+
+    - name: remove-duplicated-rows-wt
+      container:
+        image: liupengfei99/python38-ds
+        command: [ sh, -c ]
+        args: [ "python -V && python /mnt/bin/src/data_cleaning/RemoveDuplicatedRows.py
+                 /mnt/input/pokemon-bad.csv /mnt/tmp/pokemon-dedup.csv" ]
+        volumeMounts:
+          - name: workflow-tmp
+            mountPath: /mnt
+
+    # worker template for task-5-1 remove duplicated rows
+    - name: copy-origin-input-file-wt
+      container:
+        image: busybox
+        command: [ sh, -c ]
+        args: [ "cp {{workflow.parameters.data-path}}/pokemon-raw.csv {{workflow.parameters.data-path}}/pokemon-dedup.csv" ]
+        volumeMounts:
+          - name: workflow-tmp
+            mountPath: /mnt
+
 

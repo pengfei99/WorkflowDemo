@@ -43,6 +43,13 @@ def main():
         result = temp_obj.substitute(duplicated_row_number=duplicated_row_numbers,
                                      duplicated_rows=duplicated_rows.to_string())
         my_logger.info("\n"+result)
+        output_path=f"{data_folder}/output-params.txt"
+        f = open(output_path, "w")
+        if duplicated_row_numbers >= 1:
+            f.write("True")
+        else:
+            f.write("False")
+        f.close()
 
 
 if __name__ == "__main__":
