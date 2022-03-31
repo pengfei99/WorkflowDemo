@@ -8,7 +8,7 @@ spec:
     parameters:
       - name: input-data-path
         value: "s3a://pengfei/workflow_demo/pokemon/pokemon-raw.csv"
-      - name: data-path
+      - name: working-data-folder
           value: "/mnt/data"
       - name: output-file-list
         value: |
@@ -125,7 +125,7 @@ spec:
       container:
         image: liupengfei99/python38-ds
         command: [ sh, -c ]
-        args: [ "python /mnt/bin/src/data_quality/check_duplication.py {{workflow.parameters.input-data-path}} {{workflow.parameters.data-path}}" ]
+        args: [ "python /mnt/bin/src/data_quality/check_duplication.py {{workflow.parameters.input-data-path}} {{workflow.parameters.working-data-folder}}" ]
         volumeMounts:
           - name: pokemon-workflow-tmp
             mountPath: /mnt
@@ -140,7 +140,7 @@ spec:
           - name: PYTHONPATH
               value: "${PYTHONPATH}:/mnt/bin"
           - name: LOG_PATH
-              value: "{{workflow.parameters.data-path}}"
+              value: "{{workflow.parameters.working-data-folder}}"
 
     - name: remove-duplicated-rows-wt
       container:
@@ -157,7 +157,7 @@ spec:
       container:
         image: busybox
         command: [ sh, -c ]
-        args: [ "cp {{workflow.parameters.data-path}}/pokemon-raw.csv {{workflow.parameters.data-path}}/pokemon-dedup.csv" ]
+        args: [ "cp {{workflow.parameters.working-data-folder}}/pokemon-raw.csv {{workflow.parameters.working-data-folder}}/pokemon-dedup.csv" ]
         volumeMounts:
           - name: workflow-tmp
             mountPath: /mnt
