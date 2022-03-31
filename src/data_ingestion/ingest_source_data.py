@@ -23,10 +23,11 @@ def main():
     storage_engine = S3StorageEngine(endpoint, access_key, secret_key, session_token)
     file_name = S3StorageEngine.get_short_file_name(remote_file_path)
     dest_file_path = f"{data_folder}/{file_name}"
-    if storage_engine.download_data(remote_file_path, dest_file_path):
+    try:
+        storage_engine.download_data(remote_file_path, dest_file_path)
         my_logger.info(f"Downloading data from {remote_file_path} to {dest_file_path}")
-    else:
-        my_logger.error(f"fail to download data from {remote_file_path}")
+    except Exception as e:
+        my_logger.error(f"fail to download data from {remote_file_path}. {e}")
 
 
 if __name__ == "__main__":

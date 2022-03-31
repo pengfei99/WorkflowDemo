@@ -25,10 +25,12 @@ def main():
     storage_engine = S3StorageEngine(endpoint, access_key, secret_key, session_token)
     source_file_path = f"{data_folder}/{source_file_name}"
     destination_file_path = f"{destination_folder}/{source_file_name}"
-    if storage_engine.upload_data(source_file_path, destination_file_path):
+    try:
+        storage_engine.upload_data(source_file_path, destination_file_path)
         my_logger.info(f"Data {source_file_path} has been uploaded to {destination_file_path}")
-    else:
-        my_logger.error(f"Fail to upload data {source_file_path} to {destination_file_path}")
+    except Exception as e:
+        my_logger.error(f"Fail to upload data {source_file_path} to {destination_file_path} \n{e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

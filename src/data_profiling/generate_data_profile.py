@@ -24,10 +24,11 @@ def main():
     my_logger.info("data sample :\n" + str(df.head(5)))
     profile = ProfileReport(df, title="pokemon_data_profiling", minimal=False, explorative=False)
     report_full_path = f"{data_folder}/{report_name}"
-    if profile.to_file(report_full_path):
+    try:
+        profile.to_file(report_full_path)
         my_logger.info(f"Generate report {report_name} for data {file_name} in {data_folder}")
-    else:
-        my_logger.error(f"Fail to generate report for data {file_name}")
+    except Exception as e:
+        my_logger.error(f"Fail to generate report for data {file_name}. \n{e}")
         sys.exit(1)
 
 

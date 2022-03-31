@@ -34,6 +34,7 @@ def main():
     except ValueError as e:
         my_logger.error(f"Failed to load table {table_name} into database {db_location}")
         my_logger.error(e)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
