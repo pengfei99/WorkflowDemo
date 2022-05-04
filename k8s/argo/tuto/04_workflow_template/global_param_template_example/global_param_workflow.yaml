@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: global-params-workflow-
+spec:
+  serviceAccountName: workflow
+  entrypoint: main
+  arguments:
+    parameters:
+      - name: message
+        value: this is appel
+      - name: username
+        value: toto
+  templates:
+    - name: main
+      steps:
+        - - name: step1
+            templateRef:
+              name: global-params-template
+              template: deliver-message
