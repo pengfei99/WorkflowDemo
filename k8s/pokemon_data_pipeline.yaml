@@ -15,9 +15,9 @@ spec:
       - name: report-name
         value: "pokemon-profile-report.html"
       - name: db-login
-        value: ""
+        value: "user-pengfei"
       - name: db-pwd
-        value: ""
+        value: "gv8eba5xmsw4kt2uk1mn"
       - name: db-hostname
         value: ""
       - name: db-port
