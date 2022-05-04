@@ -5,7 +5,7 @@ metadata:
   # The generate name is useful when you resubmit, so it will not overwrite the old workflow
   # history, because it will always have a new name.
   # you can use name to have a static workflow name.
-  generateName: hello-world-
+  generateName: hello-argo-
   # name: hello-world
 spec:
   entrypoint: whalesay          # invoke the whalesay template
@@ -14,7 +14,7 @@ spec:
       container:
         image: docker/whalesay
         command: [cowsay]
-        args: ["hello world"]
+        args: ["hello argo"]
         resources:
         # request is the minmun resource quarantee by the cluster, if no limits sets and the host server has more resource, the container can use more resource 
           requests:
