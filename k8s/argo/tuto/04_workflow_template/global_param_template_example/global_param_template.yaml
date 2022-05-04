@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: global-params-template
+spec:
+  serviceAccountName: workflow
+  arguments:
+    parameters:
+      - name: message
+        value: this is appel
+      - name: username
+        value: toto
+  templates:
+    - name: deliver-message
+      container:
+        image: docker/whalesay
+        command: [cowsay]
+        args: ["Hello {{workflow.parameters.username}}, this is your message {{workflow.parameters.message}}"]
