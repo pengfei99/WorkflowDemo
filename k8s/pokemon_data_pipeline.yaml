@@ -23,7 +23,7 @@ spec:
       - name: db-port
         value: ""
       - name: db-name
-        value: ""
+        value: "north_wind"
       - name: db-table-name
         value: ""
       - name: output-file-list
@@ -162,9 +162,9 @@ spec:
           - name: AWS_ACCESS_KEY_ID
             value: "{{workflow.parameters.aws-access-id}}"
           - name: PYTHONPATH
-              value: "${PYTHONPATH}:/mnt/bin"
+            value: "${PYTHONPATH}:/mnt/bin"
           - name: LOG_PATH
-              value: "{{workflow.parameters.working-data-folder}}"
+            value: "{{workflow.parameters.working-data-folder}}"
           # worker template for task-0 load code source and data
 
     # worker template for task-1 check duplicated rows
