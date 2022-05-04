@@ -1,0 +1,26 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow                  # new type of k8s spec
+metadata:
+  # name of the workflow spec, generate name will add a random number at the end
+  # The generate name is useful when you resubmit, so it will not overwrite the old workflow
+  # history, because it will always have a new name.
+  # you can use name to have a static workflow name.
+  generateName: hello-world-
+  # name: hello-world
+spec:
+  entrypoint: whalesay          # invoke the whalesay template
+  templates:
+    - name: whalesay              # name of the template
+      container:
+        image: docker/whalesay
+        command: [cowsay]
+        args: ["hello world"]
+        resources:
+        # request is the minmun resource quarantee by the cluster, if no limits sets and the host server has more resource, the container can use more resource 
+          requests:
+            memory: "512Mi"
+            cpu: "1000m"
+        # limit set the maximum resource allow to the container, even the host server has more available resource, the container can not use it. 
+          limits:
+            memory: "1024Mi"
+            cpu: "2000m"    
