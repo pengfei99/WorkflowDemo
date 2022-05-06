@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
-  generateName: pokemon-data-pipeline
+  generateName: pokemon-data-pipeline-from-template
 spec:
   entrypoint: main
   arguments:
