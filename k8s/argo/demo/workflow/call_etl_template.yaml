@@ -1,0 +1,46 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: pokemon-data-pipeline
+spec:
+  entrypoint: main
+  arguments:
+    parameters:
+      - name: "input-data-path"
+        value: "s3a://pengfei/workflow_demo/pokemon/pokemon-raw.csv"
+      - name: working-data-folder
+        value: "/mnt/data"
+      - name: "destination"
+        value: "s3a://pengfei/workflow_demo/pokemon/target"
+      - name: report-name
+        value: "pokemon-profile-report.html"
+      - name: db-login
+        value: "user-pengfei"
+      - name: db-pwd
+        value: ""
+      - name: db-hostname
+        value: "postgresql-124499"
+      - name: db-port
+        value: "5432"
+      - name: db-name
+        value: "north_wind"
+      - name: db-table-name
+        value: "pokemon_stat"
+      - name: output-file-list
+        value: |
+          [
+            { "file-path": "/mnt/data", "file-name": "pokemon-cleaned.csv" },
+            { "file-path": "/mnt/data", "file-name": "pokemon-cleaned.parquet" }
+          ]
+      - name: aws-access-id
+        value: ""
+      - name: aws-secret-key
+        value: ""
+      - name: aws-session-token
+        value: "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3NLZXkiOiJSOTZHUzNYVzE3Sk5RSUgwTVNSUiIsImFjciI6IjEiLCJhbGxvd2VkLW9yaWdpbnMiOlsiKiJdLCJhdWQiOlsibWluaW8tZGF0YW5vZGUiLCJvbnl4aWEiLCJhY2NvdW50Il0sImF1dGhfdGltZSI6MTY1MTgyMTQyOCwiYXpwIjoib255eGlhIiwiZW1haWwiOiJsaXUucGVuZ2ZlaUBob3RtYWlsLmZyIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsImV4cCI6MTY1MTk0MzI3NCwiZmFtaWx5X25hbWUiOiJMaXUiLCJnaXZlbl9uYW1lIjoiUGVuZ2ZlaSIsImdyb3VwcyI6WyJmb3JtYXRpb24iLCJvbnl4aWEiLCJwb2MtYWlkYSIsInJlbGV2YW5jIiwic3BhcmstbGFiIiwic3NwY2xvdWQtYWRtaW4iLCJ2dGwiXSwiaWF0IjoxNjUxODIxNDI4LCJpc3MiOiJodHRwczovL2F1dGgubGFiLnNzcGNsb3VkLmZyL2F1dGgvcmVhbG1zL3NzcGNsb3VkIiwianRpIjoiNGZiMzRiYzUtMzdiNS00ZTc4LThiNWMtYzgyYjAxMzFmOTRlIiwibG9jYWxlIjoiZnIiLCJuYW1lIjoiUGVuZ2ZlaSBMaXUiLCJub25jZSI6ImU2MzYxMWY5LTU5ZTItNDZjNi04ZDU1LTVhMDQ2YWM3NTAwNCIsInBvbGljeSI6InN0c29ubHkiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJwZW5nZmVpIiwicmVhbG1fYWNjZXNzIjp7InJvbGVzIjpbIkF0bGFzX3JvbGVfYWRtaW4iXX0sInJlc291cmNlX2FjY2VzcyI6eyJhY2NvdW50Ijp7InJvbGVzIjpbIm1hbmFnZS1hY2NvdW50IiwibWFuYWdlLWFjY291bnQtbGlua3MiLCJ2aWV3LXByb2ZpbGUiXX19LCJzY29wZSI6Im9wZW5pZCBwcm9maWxlIGdyb3VwcyBlbWFpbCIsInNlc3Npb25fc3RhdGUiOiI1NmQ0M2I3ZS04YTQzLTRjOWItYTYxMi1iZTMzYTU3NDQ0M2IiLCJzaWQiOiI1NmQ0M2I3ZS04YTQzLTRjOWItYTYxMi1iZTMzYTU3NDQ0M2IiLCJzdWIiOiI0NzM0OTEyOC00YTRjLTQyMjYtYTViMS02ODA4MDFhZjVhMmIiLCJ0eXAiOiJCZWFyZXIifQ.M6a_T9rmQXWV7eNlDtLaPNC4FoUb6E28QCUhzHwEW6lon6adZmGOh41W53hl9eA2ZBUHt3jYpfAFnBQjRzjRtg"
+      - name: aws-default-region
+        value: "us-east-1"
+      - name: aws-s3-endpoint
+        value: "minio.lab.sspcloud.fr"
+  workflowTemplateRef:
+    name: pokemon-etl-template
