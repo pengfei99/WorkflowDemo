@@ -1,0 +1,42 @@
+# The workflow template definition in argo v2.7 and after are fully compatible with Workflow definitions. 
+# You only need to change kind: Workflow to kind: WorkflowTemplate to convert existing Workflow to a WorkflowTemplate.
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: print-message-template
+spec:
+  arguments:
+    parameters:
+      - name: message
+        value: this is appel
+      - name: username
+        value: toto
+      - name: backup-message
+        value: titi
+  # The entrypoint in the template is the default entrypoint. If the workflow which calls the template also provides an
+  # entrypoint, the default one will be replaced
+  entrypoint: print
+  # This template has an exit handler
+  onExit: exit-handler
+  # Template can have default arguments, if the workflow which calls the template also provides the same
+  # arguments. The default arguments will be override.
+  templates:
+    - name: print
+      container:
+        image: busybox
+        args: ["echo", "In print-message template, Hello {{workflow.parameters.username}}, this is your message {{workflow.parameters.message}}"]
+        imagePullPolicy: IfNotPresent
+    - name: backup
+      container:
+        image: busybox
+        args: ["echo", "backup template prints {{workflow.parameters.backup-message}}"]
+        imagePullPolicy: IfNotPresent
+   # exit handler template
+    - name: exit-handler
+      container:
+        image: busybox
+        args: ["echo", "Exit Handler"]
+        imagePullPolicy: IfNotPresent
+
+# To submit a workflow template
+# argo template create path/to/template.yaml
