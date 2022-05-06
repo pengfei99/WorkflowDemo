@@ -11,10 +11,23 @@ spec:
         value: this is appel
       - name: username
         value: toto
+      - name: backup-message
+        value: I'm a backup robot
   templates:
     - name: main
-      steps:
-        - - name: step1
-            templateRef:
-              name: global-params-template
-              template: deliver-message
+      dag:
+        tasks:
+        - name: task1
+          templateRef:
+            name: global-params-template
+            template: deliver-message
+        - name: task2
+          dependencies: [ task1 ]
+          templateRef:
+            name: print-message-template
+            template: print
+        - name: task3
+          dependencies: [ task1 ]
+          templateRef:
+            name: print-message-template
+            template: backup
