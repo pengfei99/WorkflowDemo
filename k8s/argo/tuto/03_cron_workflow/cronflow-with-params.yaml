@@ -16,6 +16,7 @@ spec:
     labels:
       app: cron-workflow
   workflowSpec:
+    serviceAccountName: workflow
     entrypoint: main
     arguments:
       parameters:

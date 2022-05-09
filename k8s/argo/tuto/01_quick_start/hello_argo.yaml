@@ -8,6 +8,7 @@ metadata:
   generateName: hello-argo-
   # name: hello-world
 spec:
+  serviceAccountName: workflow   # the account that allows argo work to launch pods on k8s
   entrypoint: whalesay          # invoke the whalesay template
   templates:
     - name: whalesay              # name of the template
